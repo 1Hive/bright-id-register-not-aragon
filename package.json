@@ -1,0 +1,34 @@
+{
+  "name": "@1hive/apps-brightid-register",
+  "version": "0.1.7",
+  "description": "Aragon App to maintain BrightId verifications and provide unique id's for users to smart contracts",
+  "license": "GPL-3.0",
+  "files": [
+    "/artifacts",
+    "/arapp.json",
+    "/build",
+    "/contracts",
+    "/test"
+  ],
+  "scripts": {
+    "compile": "buidler compile --force",
+    "test": "buidler test --network buidlerevm",
+    "publish:major": "buidler publish major",
+    "publish:minor": "buidler publish minor",
+    "publish:patch": "buidler publish patch"
+  },
+  "dependencies": {
+    "@aragon/os": "^5.0.0-rc.0"
+  },
+  "devDependencies": {
+    "@aragon/buidler-aragon": "^0.2.9",
+    "@aragon/contract-helpers-test": "^0.1.0-rc.2",
+    "@nomiclabs/buidler": "^1.3.0",
+    "@nomiclabs/buidler-etherscan": "^1.3.0",
+    "@nomiclabs/buidler-truffle5": "^1.3.0",
+    "@nomiclabs/buidler-web3": "^1.3.0",
+    "web3": "^1.2.0",
+    "eth-ens-namehash": "^2.0.8",
+    "ethers": "^5.0.13"
+  }
+}
