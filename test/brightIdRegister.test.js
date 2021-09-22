@@ -3,7 +3,6 @@ const RegisterAndCall = artifacts.require('RegisterAndCallMock.sol')
 const RegisterAndCallAbi = require('../artifacts/RegisterAndCallMock.json').abi
 const { assertRevert } = require('@aragon/contract-helpers-test/src/asserts/assertThrow')
 const { ONE_DAY, ONE_WEEK, ZERO_ADDRESS, getEventArgument, getEvents, bn } = require('@aragon/contract-helpers-test')
-const { newDao, newApp } = require('./helpers/dao')
 const ethers = require('ethers')
 
 const ANY_ADDRESS = '0xffffffffffffffffffffffffffffffffffffffff'
@@ -45,25 +44,13 @@ const getFirstAndThirdVerificationsSignatures = (contextIds, timestamps) => {
 }
 
 contract('BrightIdRegister', ([appManager, verifier, verifier2, verifier3, brightIdUser, brightIdUser2, brightIdUser3]) => {
-  let dao, acl
-  let brightIdRegisterBase, brightIdRegister
+  let brightIdRegister
 
-  before(async () => {
-    brightIdRegisterBase = await BrightIdRegister.new()
-  })
-
-  beforeEach(async () => {
-    ({ dao, acl } = await newDao(appManager))
-    const brightIdRegisterProxyAddress = await newApp(dao, 'brightid-register', brightIdRegisterBase.address, appManager)
-    brightIdRegister = await BrightIdRegister.at(brightIdRegisterProxyAddress)
-    await acl.createPermission(ANY_ADDRESS, brightIdRegister.address, await brightIdRegister.UPDATE_SETTINGS_ROLE(), appManager, { from: appManager })
-  })
-
-  context('initialize(brightIdContext, brightIdVerifiers, requiredVerifications, registrationPeriod, verificationTimestampVariance)', () => {
+  context('constructor(brightIdContext, brightIdVerifiers, requiredVerifications, registrationPeriod, verificationTimestampVariance)', () => {
     let addresses, timestamp, timestamps, signatures
 
     beforeEach(async () => {
-      await brightIdRegister.initialize(BRIGHT_ID_CONTEXT, [verifier, verifier2], bn(2), REGISTRATION_PERIOD, VERIFICATION_TIMESTAMP_VARIANCE)
+      brightIdRegister = await BrightIdRegister.new(appManager, BRIGHT_ID_CONTEXT, [verifier, verifier2], bn(2), REGISTRATION_PERIOD, VERIFICATION_TIMESTAMP_VARIANCE)
       addresses = [brightIdUser]
       timestamp = await brightIdRegister.getTimestampPublic()
       timestamps = [timestamp, timestamp.add(bn(1))]
@@ -83,43 +70,44 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, verifier3, brigh
     })
 
     it('reverts when registration period is 0', async () => {
-      const brightIdRegisterProxyAddress = await newApp(dao, 'brightid-register', brightIdRegisterBase.address, appManager)
-      brightIdRegister = await BrightIdRegister.at(brightIdRegisterProxyAddress)
-      await assertRevert(brightIdRegister.initialize(BRIGHT_ID_CONTEXT, [verifier], bn(1), 0, VERIFICATION_TIMESTAMP_VARIANCE),
+      await assertRevert(BrightIdRegister.new(appManager, BRIGHT_ID_CONTEXT, [verifier], bn(1), 0, VERIFICATION_TIMESTAMP_VARIANCE),
         'BRIGHTID_REGISTRATION_PERIOD_ZERO')
     })
 
     it('reverts when empty brightid verifiers', async () => {
-      const brightIdRegisterProxyAddress = await newApp(dao, 'brightid-register', brightIdRegisterBase.address, appManager)
-      brightIdRegister = await BrightIdRegister.at(brightIdRegisterProxyAddress)
-      await assertRevert(brightIdRegister.initialize(BRIGHT_ID_CONTEXT, [], bn(0), REGISTRATION_PERIOD, VERIFICATION_TIMESTAMP_VARIANCE),
+      await assertRevert(BrightIdRegister.new(appManager, BRIGHT_ID_CONTEXT, [], bn(0), REGISTRATION_PERIOD, VERIFICATION_TIMESTAMP_VARIANCE),
         'BRIGHTID_NO_VERIFIERS')
     })
 
     it('reverts when more brightid verifiers than max', async () => {
-      const brightIdRegisterProxyAddress = await newApp(dao, 'brightid-register', brightIdRegisterBase.address, appManager)
-      brightIdRegister = await BrightIdRegister.at(brightIdRegisterProxyAddress)
       const maxBrightIdVerifiers = await brightIdRegister.MAX_BRIGHTID_VERIFIERS()
       let brightIdVerifiers = [verifier]
       for (let i = 0; i < maxBrightIdVerifiers; i++) {
         brightIdVerifiers.push(verifier)
       }
-      await assertRevert(brightIdRegister.initialize(BRIGHT_ID_CONTEXT, brightIdVerifiers, bn(maxBrightIdVerifiers), REGISTRATION_PERIOD, VERIFICATION_TIMESTAMP_VARIANCE),
+      await assertRevert(BrightIdRegister.new(appManager, BRIGHT_ID_CONTEXT, brightIdVerifiers, bn(maxBrightIdVerifiers), REGISTRATION_PERIOD, VERIFICATION_TIMESTAMP_VARIANCE),
         'BRIGHTID_TOO_MANY_VERIFIERS')
     })
 
     it('reverts when required verifiers is zero', async () => {
-      const brightIdRegisterProxyAddress = await newApp(dao, 'brightid-register', brightIdRegisterBase.address, appManager)
-      brightIdRegister = await BrightIdRegister.at(brightIdRegisterProxyAddress)
-      await assertRevert(brightIdRegister.initialize(BRIGHT_ID_CONTEXT, [verifier], bn(0), REGISTRATION_PERIOD, VERIFICATION_TIMESTAMP_VARIANCE),
+      await assertRevert(BrightIdRegister.new(appManager, BRIGHT_ID_CONTEXT, [verifier], bn(0), REGISTRATION_PERIOD, VERIFICATION_TIMESTAMP_VARIANCE),
         'BRIGHTID_NOT_ENOUGH_VERIFICATIONS')
     })
 
     it('reverts when required verifiers is more than given verifiers', async () => {
-      const brightIdRegisterProxyAddress = await newApp(dao, 'brightid-register', brightIdRegisterBase.address, appManager)
-      brightIdRegister = await BrightIdRegister.at(brightIdRegisterProxyAddress)
-      await assertRevert(brightIdRegister.initialize(BRIGHT_ID_CONTEXT, [verifier], bn(2), REGISTRATION_PERIOD, VERIFICATION_TIMESTAMP_VARIANCE),
+      await assertRevert(BrightIdRegister.new(appManager, BRIGHT_ID_CONTEXT, [verifier], bn(2), REGISTRATION_PERIOD, VERIFICATION_TIMESTAMP_VARIANCE),
         'BRIGHTID_TOO_MANY_VERIFICATIONS')
+    })
+
+    context('setSettingsUpdater(settingsUpdater)', () => {
+      it('sets the settings updater', async () => {
+        await brightIdRegister.setSettingsUpdater(brightIdUser)
+        assert.equal(await brightIdRegister.settingsUpdater(), brightIdUser, 'Incorrect settings updater')
+      })
+
+      it('reverts when not called by current settings updater', async () => {
+        await assertRevert(brightIdRegister.setSettingsUpdater(brightIdUser, {from: brightIdUser}), "BRIGHTID_NOT_SETTINGS_UPDATER")
+      })
     })
 
     context('setBrightIdVerifiers(brightIdVerifier, requiredVerifications)', () => {
@@ -168,9 +156,9 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, verifier3, brigh
           'BRIGHTID_TOO_MANY_VERIFICATIONS')
       })
 
-      it('reverts when no permission', async () => {
-        await acl.revokePermission(ANY_ADDRESS, brightIdRegister.address, await brightIdRegister.UPDATE_SETTINGS_ROLE())
-        await assertRevert(brightIdRegister.setBrightIdVerifiers([verifier2], bn(1)), 'APP_AUTH_FAILED')
+      it('reverts when not settings updater', async () => {
+        await brightIdRegister.setSettingsUpdater(brightIdUser)
+        await assertRevert(brightIdRegister.setBrightIdVerifiers([verifier2], bn(1)), 'BRIGHTID_NOT_SETTINGS_UPDATER')
       })
     })
 
@@ -188,9 +176,9 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, verifier3, brigh
         await assertRevert(brightIdRegister.setRegistrationPeriod(0), 'BRIGHTID_REGISTRATION_PERIOD_ZERO')
       })
 
-      it('reverts when no permission', async () => {
-        await acl.revokePermission(ANY_ADDRESS, brightIdRegister.address, await brightIdRegister.UPDATE_SETTINGS_ROLE())
-        await assertRevert(brightIdRegister.setRegistrationPeriod(ONE_DAY), 'APP_AUTH_FAILED')
+      it('reverts when not settings updater', async () => {
+        await brightIdRegister.setSettingsUpdater(brightIdUser)
+        await assertRevert(brightIdRegister.setRegistrationPeriod(ONE_DAY), 'BRIGHTID_NOT_SETTINGS_UPDATER')
       })
     })
 
@@ -204,9 +192,9 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, verifier3, brigh
         assert.equal(verificationTimestampVariance, newVerificationTimestampVariance, 'Incorrect verification timestamps variance')
       })
 
-      it('reverts when no permission', async () => {
-        await acl.revokePermission(ANY_ADDRESS, brightIdRegister.address, await brightIdRegister.UPDATE_SETTINGS_ROLE())
-        await assertRevert(brightIdRegister.setVerificationTimestampVariance(ONE_WEEK), 'APP_AUTH_FAILED')
+      it('reverts when not settings updater', async () => {
+        await brightIdRegister.setSettingsUpdater(brightIdUser)
+        await assertRevert(brightIdRegister.setVerificationTimestampVariance(ONE_WEEK), 'BRIGHTID_NOT_SETTINGS_UPDATER')
       })
     })
 

@@ -1,15 +1,13 @@
 pragma solidity ^0.4.24;
 
-import "@aragon/os/contracts/apps/AragonApp.sol";
-import "@aragon/os/contracts/lib/math/SafeMath.sol";
+import "./lib/SafeMath.sol";
 import "./RegisterAndCall.sol";
 import "./lib/ArrayUtils.sol";
+import "./lib/TimeHelpers.sol";
 
-contract BrightIdRegister is AragonApp {
+contract BrightIdRegister is TimeHelpers {
     using SafeMath for uint256;
     using ArrayUtils for address[];
-
-    bytes32 constant public UPDATE_SETTINGS_ROLE = keccak256("UPDATE_SETTINGS_ROLE");
 
     uint256 constant public MIN_BRIGHTID_VERIFIERS = 1;
     uint256 constant public MAX_BRIGHTID_VERIFIERS = 20;
@@ -34,6 +32,7 @@ contract BrightIdRegister is AragonApp {
         bool addressVoid;
     }
 
+    address public settingsUpdater;
     bytes32 public brightIdContext;
     address[] public brightIdVerifiers;
     uint256 public requiredVerifications;
@@ -44,7 +43,13 @@ contract BrightIdRegister is AragonApp {
 
     event Register(address sender);
 
+    modifier onlySettingsUpdater() {
+        require(msg.sender == settingsUpdater, "BRIGHTID_NOT_SETTINGS_UPDATER");
+        _;
+    }
+
     /**
+    * @param _settingsUpdater Address able to update the config
     * @param _brightIdContext BrightId context used for verifying users
     * @param _brightIdVerifiers Addresses used to verify signed BrightId verifications
     * @param _requiredVerifications Number of positive verifications required to register a user
@@ -52,22 +57,30 @@ contract BrightIdRegister is AragonApp {
     * @param _verificationTimestampVariance Acceptable period of time between creating a BrightId verification
     *       and registering it with the BrightIdRegister
     */
-    function initialize(
+    constructor(
+        address _settingsUpdater,
         bytes32 _brightIdContext,
         address[] memory _brightIdVerifiers,
         uint256 _requiredVerifications,
         uint256 _registrationPeriod,
         uint256 _verificationTimestampVariance
     )
-        public onlyInit
+        public
     {
+        _setSettingsUpdater(_settingsUpdater);
         _setBrightIdVerifiers(_brightIdVerifiers, _requiredVerifications);
         _setRegistrationPeriod(_registrationPeriod);
 
         brightIdContext = _brightIdContext;
         verificationTimestampVariance = _verificationTimestampVariance;
+    }
 
-        initialized();
+    /**
+    * @notice Set the settings updater to `_settingsUpdater`
+    * @param _settingsUpdater The new settings updater address
+    */
+    function setSettingsUpdater(address _settingsUpdater) external onlySettingsUpdater {
+        _setSettingsUpdater(_settingsUpdater);
     }
 
     /**
@@ -76,7 +89,7 @@ contract BrightIdRegister is AragonApp {
     * @param _brightIdVerifiers Addresses used to verify signed BrightId verifications
     * @param _requiredVerifications Number of positive verifications required to register a user
     */
-    function setBrightIdVerifiers(address[] _brightIdVerifiers, uint256 _requiredVerifications) external auth(UPDATE_SETTINGS_ROLE) {
+    function setBrightIdVerifiers(address[] _brightIdVerifiers, uint256 _requiredVerifications) external onlySettingsUpdater {
         _setBrightIdVerifiers(_brightIdVerifiers, _requiredVerifications);
     }
 
@@ -84,7 +97,7 @@ contract BrightIdRegister is AragonApp {
     * @notice Set the registration period to `_registrationPeriod`
     * @param _registrationPeriod Length of time after a registration before registration is required again
     */
-    function setRegistrationPeriod(uint256 _registrationPeriod) external auth(UPDATE_SETTINGS_ROLE) {
+    function setRegistrationPeriod(uint256 _registrationPeriod) external onlySettingsUpdater {
         _setRegistrationPeriod(_registrationPeriod);
     }
 
@@ -93,7 +106,7 @@ contract BrightIdRegister is AragonApp {
     * @param _verificationTimestampVariance Acceptable period of time between fetching a BrightId verification
     *       and registering it with the BrightIdRegister
     */
-    function setVerificationTimestampVariance(uint256 _verificationTimestampVariance) external auth(UPDATE_SETTINGS_ROLE) {
+    function setVerificationTimestampVariance(uint256 _verificationTimestampVariance) external onlySettingsUpdater {
         verificationTimestampVariance = _verificationTimestampVariance;
     }
 
@@ -183,6 +196,10 @@ contract BrightIdRegister is AragonApp {
         require(userRegistration.uniqueUserId != address(0), ERROR_NO_UNIQUE_ID_ASSIGNED);
 
         return userRegistration.uniqueUserId;
+    }
+
+    function _setSettingsUpdater(address _settingsUpdater) internal {
+        settingsUpdater = _settingsUpdater;
     }
 
     function _setBrightIdVerifiers(address[] memory _brightIdVerifiers, uint256 _requiredVerifications) internal {
